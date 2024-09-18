@@ -6,6 +6,7 @@ import {
   TransactionMessage,
   VersionedTransaction,
   type AddressLookupTableAccount,
+  type Commitment,
   type Connection,
   type SignatureStatus,
   type TransactionConfirmationStatus,
@@ -91,4 +92,58 @@ export async function confirmTransaction(
   }
 
   throw new Error(`Transaction confirmation timeout after ${timeout}ms`);
+}
+
+export async function isBlockhashExpired(
+  connection: Connection,
+  lastValidBlockHeight: number,
+  commitment: Commitment,
+): Promise<boolean> {
+  const currentBlockHeight = await connection.getBlockHeight(commitment);
+  const blockHeightDifference = currentBlockHeight - (lastValidBlockHeight - 150);
+
+  console.log("Block Height Information:");
+  console.log("--------------------------------------------");
+  console.log(`Current Block Height:              ${currentBlockHeight}`);
+  console.log(`Last Valid Block Height - 150:     ${lastValidBlockHeight - 150}`);
+  console.log(`Difference:                        ${blockHeightDifference}`);
+  console.log("--------------------------------------------");
+
+  return blockHeightDifference > 0;
+}
+
+export async function checkTxOnChainAndIsDropped(
+  connection: Connection,
+  txSignature: TransactionSignature,
+  lastValidBlockHeight: number,
+  commitment: Commitment,
+): Promise<{ success: boolean; message: string }> {
+  const startTime = Date.now();
+
+  while (true) {
+    const { value: status } = await connection.getSignatureStatus(txSignature);
+
+    if (status) {
+      if (status.err) {
+        return { success: false, message: `Transaction failed: ${JSON.stringify(status.err)}` };
+      }
+
+      if (status.confirmationStatus === "confirmed" || status.confirmationStatus === "finalized") {
+        const elapsedTime = (Date.now() - startTime) / 1000;
+        console.log(`Transaction Success. Elapsed time: ${elapsedTime.toFixed(2)} seconds.`);
+        console.log(`https://explorer.solana.com/tx/${txSignature}?cluster=devnet`);
+        return { success: true, message: "Transaction confirmed" };
+      }
+    }
+
+    const hashExpired = await isBlockhashExpired(connection, lastValidBlockHeight, commitment);
+
+    if (hashExpired) {
+      const elapsedTime = (Date.now() - startTime) / 1000;
+      console.log(`Blockhash has expired. Elapsed time: ${elapsedTime.toFixed(2)} seconds.`);
+      return { success: false, message: "Blockhash has expired" };
+    }
+
+    await new Promise(resolve => setTimeout(resolve, 2500)); // Sleep for 2.5 seconds
+  }
 }

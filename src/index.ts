@@ -9,6 +9,8 @@ import {
   SystemProgram,
   Transaction,
   TransactionInstruction,
+  TransactionMessage,
+  VersionedTransaction,
 } from "@solana/web3.js";
 import { loadKeypair } from "./utils";
 import bs58 from "bs58";
@@ -49,9 +51,10 @@ import {
 } from "./lookup-table";
 import { getAccountSpace } from "./account";
 import { decodeMintData, getGlobal, getMintData, getMintDiy } from "./buffer-layout";
+import { checkTxOnChainAndIsDropped } from "./transaction";
 
 async function main() {
-  const endpoint = "https://api.mainnet-beta.solana.com";
+  const endpoint = "https://api.devnet.solana.com";
   const connection = new Connection(endpoint, "confirmed");
 
   const wallet = loadKeypair("./payer.json");
@@ -65,16 +68,49 @@ async function main() {
   const blockEngineUrl = "https://tokyo.mainnet.block-engine.jito.wtf";
   const jitoClient = new JitoJsonRpcClient(blockEngineUrl);
 
-  // const mintAddress = new PublicKey("EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm");
-  // const wifMint = await getMintDiy(connection, mintAddress);
-  // console.log(JSON.stringify(wifMint, null, 2));
+  const commitment = "confirmed";
+  const latestBlockhash = await connection.getLatestBlockhash(commitment);
 
-  const pumpGlobalAddress = new PublicKey("4wTV1YmiEkRvAtNtsSGPtUrqRYQMe5SKy2uB4Jjaxnjf");
-  const pumpGlobal = await getGlobal(connection, pumpGlobalAddress);
-  console.log(JSON.stringify(pumpGlobal, null, 2));
+  const transferIx = SystemProgram.transfer({
+    fromPubkey: wallet.publicKey,
+    toPubkey: owner.publicKey,
+    lamports: 0.1 * LAMPORTS_PER_SOL,
+  });
+
+  const messageV0 = new TransactionMessage({
+    payerKey: wallet.publicKey,
+    recentBlockhash: latestBlockhash.blockhash,
+    instructions: [transferIx],
+  }).compileToV0Message();
+  const transactionV0 = new VersionedTransaction(messageV0);
+  transactionV0.sign([wallet]);
+
+  const txSignature = await connection.sendTransaction(transactionV0);
+
+  const result = await checkTxOnChainAndIsDropped(
+    connection,
+    txSignature,
+    latestBlockhash.lastValidBlockHeight,
+    commitment,
+  );
+
+  console.log(result.message);
+  if (result.success) {
+    console.log("Transaction was successful!");
+  } else {
+    console.log("Transaction failed or was dropped.");
+  }
 }
 
 await main().catch(console.error);
+
+// const mintAddress = new PublicKey("EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm");
+// const wifMint = await getMintDiy(connection, mintAddress);
+// console.log(JSON.stringify(wifMint, null, 2));
+
+// const pumpGlobalAddress = new PublicKey("4wTV1YmiEkRvAtNtsSGPtUrqRYQMe5SKy2uB4Jjaxnjf");
+// const pumpGlobal = await getGlobal(connection, pumpGlobalAddress);
+// console.log(JSON.stringify(pumpGlobal, null, 2));
 
 // await createLookupTable(connection, wallet);
 // const lookupTableAddress = new PublicKey("6aBWZLnEAnp1g7GnAz1KDb7vYFeBfggWJpw87EMBQnAw");
