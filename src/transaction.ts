@@ -100,13 +100,13 @@ export async function isBlockhashExpired(
   commitment: Commitment,
 ): Promise<boolean> {
   const currentBlockHeight = await connection.getBlockHeight(commitment);
-  const blockHeightDifference = currentBlockHeight - (lastValidBlockHeight - 150);
+  const blockHeightDifference = currentBlockHeight - lastValidBlockHeight;
 
   console.log("Block Height Information:");
   console.log("--------------------------------------------");
-  console.log(`Current Block Height:              ${currentBlockHeight}`);
-  console.log(`Last Valid Block Height - 150:     ${lastValidBlockHeight - 150}`);
-  console.log(`Difference:                        ${blockHeightDifference}`);
+  console.log(`Current Block Height:        ${currentBlockHeight}`);
+  console.log(`Last Valid Block Height:     ${lastValidBlockHeight}`);
+  console.log(`Difference:                  ${blockHeightDifference}`);
   console.log("--------------------------------------------");
 
   return blockHeightDifference > 0;
